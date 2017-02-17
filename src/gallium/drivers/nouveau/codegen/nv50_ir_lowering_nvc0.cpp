@@ -68,6 +68,29 @@ NVC0LegalizeSSA::handleDIV(Instruction *i)
 }
 
 void
+NVC0LegalizeSSA::handleRCPLib(Instruction *i, Value *src[])
+{
+   FlowInstruction *call;
+   Value *def[2];
+   int builtin;
+
+   def[0] = bld.mkMovToReg(0, src[0])->getDef(0);
+   def[1] = bld.mkMovToReg(1, src[1])->getDef(0);
+
+   builtin = NVC0_BUILTIN_RCP_F64;
+
+   call = bld.mkFlow(OP_CALL, NULL, CC_ALWAYS, NULL);
+   bld.mkOp2(OP_MERGE, TYPE_U64, i->getDef(0), def[0], def[1]);
+   bld.mkClobber(FILE_GPR, 0x3ffc, 2);
+   bld.mkClobber(FILE_PREDICATE, 0x1, 0);
+
+   call->fixed = 1;
+   call->absolute = call->builtin = 1;
+   call->target.builtin = builtin;
+   delete_Instruction(prog, i);
+}
+
+void
 NVC0LegalizeSSA::handleRCPRSQ(Instruction *i)
 {
    assert(i->dType == TYPE_F64);
@@ -79,6 +102,13 @@ NVC0LegalizeSSA::handleRCPRSQ(Instruction *i)
    // 1. Take the source and it up.
    Value *src[2], *dst[2], *def = i->getDef(0);
    bld.mkSplit(src, 4, i->getSrc(0));
+
+   int chip = prog->getTarget()->getChipset();
+   if (chip >= NVISA_GK20A_CHIPSET && chip < NVISA_GM107_CHIPSET &&
+       i->op == OP_RCP) {
+      handleRCPLib(i, src);
+      return;
+   }
 
    // 2. We don't care about the low 32 bits of the destination. Stick a 0 in.
    dst[0] = bld.loadImm(NULL, 0);
