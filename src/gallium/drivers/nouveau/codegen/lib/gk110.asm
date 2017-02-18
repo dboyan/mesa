@@ -94,15 +94,21 @@ gk110_div_s32:
 // CLOBBER: $r2 - $r13, $p0
 //
 gk110_rcp_f64:
+   // Step1: classify input according to exponent and value, and calculate
+   // result for 0/inf/nan, $r2 holds the exponent value
    ext u32 $r2 $r1 0xb14
    add b32 $r3 $r2 0xffffffff
    joinat #L3
+   // (exponent-1) > 0x7fd (unsigned) means exponent is either 0x7ff of 0.
+   // There are three cases: nan, inf, and denorm (including 0)
    set b32 $p0 0x1 gt u32 $r3 0x7fd
+   // $r3: 0 for norms, 0x36 for denorms, -1 for others
    mov b32 $r3 0x0
    sched 0x2b 0x04 0x2d 0x2b 0x04 0x2b 0x28
    (not $p0) bra #L2
-   // Nan/Inf/denorm
+   // Nan/Inf/denorm goes here
    mov b32 $r3 0xffffffff
+   // A number is NaN if its abs value is greater than inf
    set $p0 0x1 gtu f64 abs $r0d 0x7ff0000000000000
    (not $p0) bra #L4
    // NaN -> NaN
@@ -111,6 +117,7 @@ gk110_rcp_f64:
 L4:
    and b32 $r4 $r1 0x7ff00000
    sched 0x28 0x2b 0x04 0x28 0x2b 0x2d 0x2b
+   // Other values with nonzero in exponent field should be inf
    set b32 $p0 0x1 eq s32 $r4 0x0
    $p0 bra #L5
    // +/-Inf -> +/-0
@@ -125,21 +132,25 @@ L5:
    or b32 $r1 $r1 0x7ff00000
    bra #L2
 L6:
-   // non-0 denorms: multiply with 2^54, join with norms
+   // non-0 denorms: multiply with 2^54 (the 0x36 in $r3), join with norms
    mul rn f64 $r0d $r0d 0x4350000000000000
    mov b32 $r3 0x36
 L2:
    join nop
 L3:
+   // All numbers with -1 in $r3 have their result ready in $r0d, return them
+   // others need further calculation
    set b32 $p0 0x1 lt s32 $r3 0x0
    $p0 bra #rsq_f64_end
    sched 0x28 0x04 0x28 0x28 0x2b 0x04 0x28
-   // normalize near 1
+   // Step 2: Before the real calculation goes on, renormalize near the values
+   // near 1 with the following manipulation in exponent field, result in $r6d
    add b32 $r4 $r2 0xc01
    shl b32 $r7 $r4 clamp 0x14
    mov b32 $r6 $r0
    sub b32 $r7 $r1 $r7
-   // convert to float, do newton-raphson step once
+   // Step 3: Convert new value to float (no overflow will occur due to step
+   // 2), calculate rcp and do newton-raphson step once
    cvt rz f32 $r5 f64 $r6
    rcp f32 $r4 $r5
    mov b32 $r0 0xbf800000
@@ -147,7 +158,7 @@ L3:
    fma rn f32 $r5 $r4 $r5 $r0
    add ftz rn f32 $r5 neg $r5 neg 0x0
    fma rn f32 $r0 $r4 $r5 $r4
-   // convert back to double, do newton-raphson steps
+   // Step 4: convert result $r0 back to double, do newton-raphson steps
    cvt f64 $r4 f32 $r0
    cvt f64 $r6 f64 neg $r6d
    mov b32 $r9 0x3ff00000
@@ -164,14 +175,18 @@ L3:
    fma rn f64 $r8d $r6d $r4d $r8d
    subr b32 $r2 $r2 0x3ff
    fma rn f64 $r0d $r10d $r8d $r4d
+   // The "normalized" drcp result is in $r0d
    add b32 $r12 $r2 $r3
    ext u32 $r3 $r1 0xb14
    add b32 $r3 $r3 $r12
    add b32 $r2 $r3 0xffffffff
    sched 0x28 0x2b 0x28 0x28 0x2b 0x28 0x28
+   // Step 5: Calculate new exponent value with old exponent ($r2),
+   // $r3 (0 or 0x36) and the exponent extracted from normalized result,
+   // and classify according to the same rule as in step 1.
    set b32 $p0 0x1 lt u32 $r2 0x7fe
    (not $p0) bra #L7
-   // normals, convert exponents back
+   // Norms: convert exponents back and return
    shl b32 $r12 $r12 clamp 0x14
    add b32 $r1 $r12 $r1
    bra #rsq_f64_end
@@ -180,14 +195,16 @@ L7:
    set b32 $p0 0x1 gt s32 $r12 0x3ff
    sched 0x2b 0x20 0x25 0x28 0x2b 0x28 0x23
    (not $p0) bra #L8
-   // infinity
+   // Infinity
    and b32 $r1 $r1 0x80000000
    mov b32 $r0 0x0
    add b32 $r1 $r1 0x7ff00000
    bra #rsq_f64_end
 L8:
    // denorms, they only fall within a small range, can't be smaller than
-   // 0x0004000000000000. The following code make use of this fact.
+   // 0x0004000000000000, which means if we set the exponent field to 1,
+   // we can get the final result by mutiplying it with 1/2 or 1/4. Decide
+   // which one of the two is needed with exponent value.
    subr b32 $r12 $r12 0xfffffc01
    set b32 $p0 0x1 gt u32 $r12 0x0
    sched 0x25 0x28 0x23 0x25 0x28 0x2c 0x2e
