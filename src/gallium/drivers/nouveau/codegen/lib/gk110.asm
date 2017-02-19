@@ -91,7 +91,7 @@ gk110_div_s32:
 //
 // INPUT:   $r0d
 // OUTPUT:  $r0d
-// CLOBBER: $r2 - $r13, $p0
+// CLOBBER: $r2 - $r9, $p0
 //
 // The core of RCP and RSQ implementation is Newton-Raphson step, which is
 // used to find successively better approximation from an imprecise initial
@@ -170,42 +170,42 @@ L3:
    add ftz rn f32 $r5 neg $r5 neg 0x0
    fma rn f32 $r0 $r4 $r5 $r4
    // Step 4: convert result $r0 back to double, do newton-raphson steps
-   cvt f64 $r4 f32 $r0
+   cvt f64 $r0 f32 $r0
    cvt f64 $r6 f64 neg $r6d
    mov b32 $r9 0x3ff00000
    mov b32 $r8 0x0
-   sched 0x29 0x23 0x29 0x29 0x23 0x25 0x23
-   fma rn f64 $r0d $r6d $r4d $r8d
-   fma rn f64 $r10d $r0d $r4d $r4d
-   mul rn f64 $r12d $r0d $r0d
-   fma rn f64 $r10d $r10d $r12d $r10d
-   fma rn f64 $r12d $r6d $r10d $r8d
-   fma rn f64 $r4d $r0d $r10d $r4d
-   fma rn f64 $r10d $r10d $r12d $r10d
-   sched 0x20 0x28 0x20 0x28 0x28 0x28 0x28
-   fma rn f64 $r8d $r6d $r4d $r8d
-   subr b32 $r2 $r2 0x3ff
-   fma rn f64 $r0d $r10d $r8d $r4d
+   sched 0x29 0x29 0x29 0x29 0x29 0x29 0x29
+   // 4 Newton-Raphson Steps, tmp in $r4d, result in $r0d
+   fma rn f64 $r4d $r6d $r0d $r8d
+   fma rn f64 $r0d $r0d $r4d $r0d
+   fma rn f64 $r4d $r6d $r0d $r8d
+   fma rn f64 $r0d $r0d $r4d $r0d
+   fma rn f64 $r4d $r6d $r0d $r8d
+   fma rn f64 $r0d $r0d $r4d $r0d
+   fma rn f64 $r4d $r6d $r0d $r8d
+   sched 0x20 0x28 0x28 0x28 0x28 0x28 0x28
+   fma rn f64 $r0d $r0d $r4d $r0d
    // The "normalized" drcp result is in $r0d
-   add b32 $r12 $r2 $r3
+   subr b32 $r2 $r2 0x3ff
+   add b32 $r4 $r2 $r3
    ext u32 $r3 $r1 0xb14
-   add b32 $r3 $r3 $r12
+   add b32 $r3 $r3 $r4
    add b32 $r2 $r3 0xffffffff
-   sched 0x28 0x2b 0x28 0x28 0x2b 0x28 0x28
+   set b32 $p0 0x1 lt u32 $r2 0x7fe
+   sched 0x2b 0x28 0x28 0x2b 0x28 0x28 0x2b
    // Step 5: Calculate new exponent value with old exponent ($r2),
    // $r3 (0 or 0x36) and the exponent extracted from normalized result,
    // and classify according to the same rule as in step 1.
-   set b32 $p0 0x1 lt u32 $r2 0x7fe
    (not $p0) bra #L7
    // Norms: convert exponents back and return
-   shl b32 $r12 $r12 clamp 0x14
-   add b32 $r1 $r12 $r1
+   shl b32 $r4 $r4 clamp 0x14
+   add b32 $r1 $r4 $r1
    bra #rsq_f64_end
 L7:
-   add b32 $r12 $r3 0xfffffc01
-   set b32 $p0 0x1 gt s32 $r12 0x3ff
-   sched 0x2b 0x20 0x25 0x28 0x2b 0x28 0x23
+   add b32 $r4 $r3 0xfffffc01
+   set b32 $p0 0x1 gt s32 $r4 0x3ff
    (not $p0) bra #L8
+   sched 0x20 0x25 0x28 0x2b 0x28 0x23 0x25
    // Infinity
    and b32 $r1 $r1 0x80000000
    mov b32 $r0 0x0
@@ -216,10 +216,10 @@ L8:
    // 0x0004000000000000, which means if we set the exponent field to 1,
    // we can get the final result by mutiplying it with 1/2 or 1/4. Decide
    // which one of the two is needed with exponent value.
-   subr b32 $r12 $r12 0xfffffc01
-   set b32 $p0 0x1 gt u32 $r12 0x0
-   sched 0x25 0x28 0x23 0x25 0x28 0x2c 0x2e
+   subr b32 $r4 $r4 0xfffffc01
+   set b32 $p0 0x1 gt u32 $r4 0x0
    and b32 $r1 $r1 0x000fffff
+   sched 0x28 0x23 0x25 0x28 0x2c 0x2e 0x2e
    $p0 mov b32 $r7 0x3fd00000
    (not $p0) mov b32 $r7 0x3fe00000
    add b32 $r1 $r1 0x00100000
@@ -228,8 +228,8 @@ L8:
 rsq_f64_end:
    ret
 gk110_rsq_f64:
-   sched 0x2e 0x00 0x00 0x00 0x00 0x00 0x00
    ret
+   sched 0x00 0x00 0x00 0x00 0x00 0x00 0x00
 
 .section #gk110_builtin_offsets
 .b64 #gk110_div_u32

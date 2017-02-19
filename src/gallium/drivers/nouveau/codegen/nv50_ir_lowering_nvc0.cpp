@@ -81,7 +81,7 @@ NVC0LegalizeSSA::handleRCPLib(Instruction *i, Value *src[])
 
    call = bld.mkFlow(OP_CALL, NULL, CC_ALWAYS, NULL);
    bld.mkOp2(OP_MERGE, TYPE_U64, i->getDef(0), def[0], def[1]);
-   bld.mkClobber(FILE_GPR, 0x3ffc, 2);
+   bld.mkClobber(FILE_GPR, 0x3fc, 2);
    bld.mkClobber(FILE_PREDICATE, 0x1, 0);
 
    call->fixed = 1;
