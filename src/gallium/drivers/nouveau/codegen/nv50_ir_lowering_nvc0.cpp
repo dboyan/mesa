@@ -68,7 +68,7 @@ NVC0LegalizeSSA::handleDIV(Instruction *i)
 }
 
 void
-NVC0LegalizeSSA::handleRCPLib(Instruction *i, Value *src[])
+NVC0LegalizeSSA::handleRCPRSQLib(Instruction *i, Value *src[])
 {
    FlowInstruction *call;
    Value *def[2];
@@ -77,12 +77,15 @@ NVC0LegalizeSSA::handleRCPLib(Instruction *i, Value *src[])
    def[0] = bld.mkMovToReg(0, src[0])->getDef(0);
    def[1] = bld.mkMovToReg(1, src[1])->getDef(0);
 
-   builtin = NVC0_BUILTIN_RCP_F64;
+   if (i->op == OP_RCP)
+      builtin = NVC0_BUILTIN_RCP_F64;
+   else
+      builtin = NVC0_BUILTIN_RSQ_F64;
 
    call = bld.mkFlow(OP_CALL, NULL, CC_ALWAYS, NULL);
    bld.mkOp2(OP_MERGE, TYPE_U64, i->getDef(0), def[0], def[1]);
    bld.mkClobber(FILE_GPR, 0x3fc, 2);
-   bld.mkClobber(FILE_PREDICATE, 0x1, 0);
+   bld.mkClobber(FILE_PREDICATE, i->op == OP_RSQ ? 0x3 : 0x1, 0);
 
    call->fixed = 1;
    call->absolute = call->builtin = 1;
@@ -104,9 +107,8 @@ NVC0LegalizeSSA::handleRCPRSQ(Instruction *i)
    bld.mkSplit(src, 4, i->getSrc(0));
 
    int chip = prog->getTarget()->getChipset();
-   if (chip >= NVISA_GK20A_CHIPSET && chip < NVISA_GM107_CHIPSET &&
-       i->op == OP_RCP) {
-      handleRCPLib(i, src);
+   if (chip >= NVISA_GK20A_CHIPSET && chip < NVISA_GM107_CHIPSET) {
+      handleRCPRSQLib(i, src);
       return;
    }
 

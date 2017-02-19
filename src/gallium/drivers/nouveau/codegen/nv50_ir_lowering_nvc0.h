@@ -33,7 +33,7 @@ private:
 
    // we want to insert calls to the builtin library only after optimization
    void handleDIV(Instruction *); // integer division, modulus
-   void handleRCPLib(Instruction *, Value *[]);
+   void handleRCPRSQLib(Instruction *, Value *[]);
    void handleRCPRSQ(Instruction *); // double precision float recip/rsqrt
    void handleFTZ(Instruction *);
    void handleSET(CmpInstruction *);
