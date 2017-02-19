@@ -101,7 +101,7 @@ gk110_div_s32:
 //     RCP_{n + 1} = 2 * RCP_{n} - x * RCP_{n} * RCP_{n}
 // The following code below use 2 FMAs for each step, and it will basically
 // look like:
-//     tmp = -src * RCP_{n} + 1;
+//     tmp = -src * RCP_{n} + 1
 //     RCP_{n + 1} = RCP_{n} * tmp + RCP_{n}
 //
 gk110_rcp_f64:
@@ -152,7 +152,7 @@ rcp_L3:
    // All numbers with -1 in $r3 have their result ready in $r0d, return them
    // others need further calculation
    set b32 $p0 0x1 lt s32 $r3 0x0
-   $p0 bra #rsq_f64_end
+   $p0 bra #rcp_end
    sched 0x28 0x04 0x28 0x28 0x2b 0x04 0x28
    // Step 2: Before the real calculation goes on, renormalize near the values
    // near 1 with the following manipulation in exponent field, result in $r6d
@@ -200,7 +200,7 @@ rcp_L3:
    // Norms: convert exponents back and return
    shl b32 $r4 $r4 clamp 0x14
    add b32 $r1 $r4 $r1
-   bra #rsq_f64_end
+   bra #rcp_end
 rcp_L7:
    add b32 $r4 $r3 0xfffffc01
    set b32 $p0 0x1 gt s32 $r4 0x3ff
@@ -210,7 +210,7 @@ rcp_L7:
    and b32 $r1 $r1 0x80000000
    mov b32 $r0 0x0
    add b32 $r1 $r1 0x7ff00000
-   bra #rsq_f64_end
+   bra #rcp_end
 rcp_L8:
    // denorms, they only fall within a small range, can't be smaller than
    // 0x0004000000000000, which means if we set the exponent field to 1,
@@ -225,7 +225,7 @@ rcp_L8:
    add b32 $r1 $r1 0x00100000
    mov b32 $r6 0x0
    mul rn f64 $r0d $r0d $r6d
-rsq_f64_end:
+rcp_end:
    ret
 gk110_rsq_f64:
    ret
