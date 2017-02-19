@@ -219,7 +219,7 @@ rcp_L8:
    subr b32 $r4 $r4 0xfffffc01
    set b32 $p0 0x1 gt u32 $r4 0x0
    and b32 $r1 $r1 0x000fffff
-   sched 0x28 0x23 0x25 0x28 0x2c 0x2e 0x2e
+   sched 0x28 0x23 0x25 0x28 0x2c 0x2e 0x2a
    $p0 mov b32 $r7 0x3fd00000
    (not $p0) mov b32 $r7 0x3fe00000
    add b32 $r1 $r1 0x00100000
@@ -227,9 +227,72 @@ rcp_L8:
    mul rn f64 $r0d $r0d $r6d
 rcp_end:
    ret
+
+// RCP F64
+//
+// INPUT:   $r0d
+// OUTPUT:  $r0d
+// CLOBBER: $r2 - $r9, $p0 - $p1
+//
+// The formula of Newton-Raphson step used in RSQ(x) is:
+//     RSQ_{n + 1} = RSQ_{n} * (1.5 - 0.5 * x * RSQ_{n} * RSQ_{n})
+// In the code below, each step is written as:
+//     tmp1 = 0.5 * x * RSQ_{n}
+//     tmp2 = -RSQ_{n} * tmp1 + 0.5
+//     RSQ_{n + 1} = RSQ_{n} * tmp2 + RSQ_{n}
+//
 gk110_rsq_f64:
+   // Before getting initial result rsqrt64h, two special cases should be
+   // handled first.
+   // 1. NaN: set the highest bit in mantissa so it'll be surely recognized
+   //    as NaN in rsqrt64h
+   set $p0 0x1 gtu f64 abs $r0d 0x7ff0000000000000
+   sched 0x20 0x27 0x27 0x20 0x28 0x2c 0x25
+   $p0 or b32 $r1 $r1 0x00080000
+   and b32 $r2 $r1 0x7fffffff
+   // 2. denorms: multiply them with 2^54 to make sure they become norms
+   //    (will multiply 2^27 to recover in the end)
+   ext u32 $r3 $r1 0xb14
+   set b32 $p1 0x1 eq u32 $r3 0x0
+   or b32 $r2 $r0 $r2
+   $p1 mul rn f64 $r0d $r0d 0x4350000000000000
+   rsqrt64h f32 $r5 $r1
+   sched 0x28 0x28 0x28 0x2b 0x20 0x27 0x28
+   // rsqrt64h will give correct result for 0/inf/nan, the following logic
+   // checks whether the input is one of those (exponent is 0x7ff or all 0
+   // except for the sign bit)
+   set b32 $r6 ne u32 $r3 0x7ff
+   and b32 $r2 $r2 $r6
+   set b32 $p0 0x1 ne u32 $r2 0x0
+   $p0 bra #rsq_norm
+   // For 0/inf/nan, make sure the sign bit agrees with input and return
+   and b32 $r1 $r1 0x80000000
+   mov b32 $r0 0x0
+   or b32 $r1 $r1 $r5
+   sched 0x2e 0x28 0x20 0x28 0x29 0x29 0x29
    ret
-   sched 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+rsq_norm:
+   // For others, do 3 Newton-Raphson steps with the formula above
+   mov b32 $r4 0x0
+   mov b32 $r9 0x3fe00000
+   mov b32 $r8 0x0
+   mul rn f64 $r2d $r0d $r8d
+   mul rn f64 $r0d $r2d $r4d
+   fma rn f64 $r6d neg $r4d $r0d $r8d
+   sched 0x29 0x29 0x29 0x29 0x29 0x29 0x29
+   fma rn f64 $r4d $r4d $r6d $r4d
+   mul rn f64 $r0d $r2d $r4d
+   fma rn f64 $r6d neg $r4d $r0d $r8d
+   fma rn f64 $r4d $r4d $r6d $r4d
+   mul rn f64 $r0d $r2d $r4d
+   fma rn f64 $r6d neg $r4d $r0d $r8d
+   fma rn f64 $r4d $r4d $r6d $r4d
+   sched 0x29 0x20 0x28 0x2e 0x00 0x00 0x00
+   // Multiply 2^27 to result for denorm input to recover
+   $p1 mul rn f64 $r4d $r4d 0x41a0000000000000
+   mov b32 $r1 $r5
+   mov b32 $r0 $r4
+   ret
 
 .section #gk110_builtin_offsets
 .b64 #gk110_div_u32
