@@ -109,46 +109,46 @@ gk110_rcp_f64:
    // result for 0/inf/nan, $r2 holds the exponent value
    ext u32 $r2 $r1 0xb14
    add b32 $r3 $r2 0xffffffff
-   joinat #L3
+   joinat #rcp_L3
    // (exponent-1) > 0x7fd (unsigned) means exponent is either 0x7ff of 0.
    // There are three cases: nan, inf, and denorm (including 0)
    set b32 $p0 0x1 gt u32 $r3 0x7fd
    // $r3: 0 for norms, 0x36 for denorms, -1 for others
    mov b32 $r3 0x0
    sched 0x2b 0x04 0x2d 0x2b 0x04 0x2b 0x28
-   (not $p0) bra #L2
+   (not $p0) bra #rcp_L2
    // Nan/Inf/denorm goes here
    mov b32 $r3 0xffffffff
    // A number is NaN if its abs value is greater than inf
    set $p0 0x1 gtu f64 abs $r0d 0x7ff0000000000000
-   (not $p0) bra #L4
+   (not $p0) bra #rcp_L4
    // NaN -> NaN
    or b32 $r1 $r1 0x80000
-   bra #L2
-L4:
+   bra #rcp_L2
+rcp_L4:
    and b32 $r4 $r1 0x7ff00000
    sched 0x28 0x2b 0x04 0x28 0x2b 0x2d 0x2b
    // Other values with nonzero in exponent field should be inf
    set b32 $p0 0x1 eq s32 $r4 0x0
-   $p0 bra #L5
+   $p0 bra #rcp_L5
    // +/-Inf -> +/-0
    xor b32 $r1 $r1 0x7ff00000
    mov b32 $r0 0x0
-   bra #L2
-L5:
+   bra #rcp_L2
+rcp_L5:
    set $p0 0x1 gtu f64 abs $r0d 0x0
-   $p0 bra #L6
+   $p0 bra #rcp_L6
    // +/-0 -> +/-Inf
    sched 0x28 0x2b 0x20 0x28 0x2f 0x28 0x2b
    or b32 $r1 $r1 0x7ff00000
-   bra #L2
-L6:
+   bra #rcp_L2
+rcp_L6:
    // non-0 denorms: multiply with 2^54 (the 0x36 in $r3), join with norms
    mul rn f64 $r0d $r0d 0x4350000000000000
    mov b32 $r3 0x36
-L2:
+rcp_L2:
    join nop
-L3:
+rcp_L3:
    // All numbers with -1 in $r3 have their result ready in $r0d, return them
    // others need further calculation
    set b32 $p0 0x1 lt s32 $r3 0x0
@@ -196,22 +196,22 @@ L3:
    // Step 5: Calculate new exponent value with old exponent ($r2),
    // $r3 (0 or 0x36) and the exponent extracted from normalized result,
    // and classify according to the same rule as in step 1.
-   (not $p0) bra #L7
+   (not $p0) bra #rcp_L7
    // Norms: convert exponents back and return
    shl b32 $r4 $r4 clamp 0x14
    add b32 $r1 $r4 $r1
    bra #rsq_f64_end
-L7:
+rcp_L7:
    add b32 $r4 $r3 0xfffffc01
    set b32 $p0 0x1 gt s32 $r4 0x3ff
-   (not $p0) bra #L8
+   (not $p0) bra #rcp_L8
    sched 0x20 0x25 0x28 0x2b 0x28 0x23 0x25
    // Infinity
    and b32 $r1 $r1 0x80000000
    mov b32 $r0 0x0
    add b32 $r1 $r1 0x7ff00000
    bra #rsq_f64_end
-L8:
+rcp_L8:
    // denorms, they only fall within a small range, can't be smaller than
    // 0x0004000000000000, which means if we set the exponent field to 1,
    // we can get the final result by mutiplying it with 1/2 or 1/4. Decide
