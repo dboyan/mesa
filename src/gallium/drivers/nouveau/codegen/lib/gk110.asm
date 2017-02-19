@@ -93,6 +93,17 @@ gk110_div_s32:
 // OUTPUT:  $r0d
 // CLOBBER: $r2 - $r13, $p0
 //
+// The core of RCP and RSQ implementation is Newton-Raphson step, which is
+// used to find successively better approximation from an imprecise initial
+// value (single precision rcp in RCP and rsqrt64h in RSQ).
+//
+// The formula of Newton-Raphson step used in RCP(x) is:
+//     RCP_{n + 1} = 2 * RCP_{n} - x * RCP_{n} * RCP_{n}
+// The following code below use 2 FMAs for each step, and it will basically
+// look like:
+//     tmp = -src * RCP_{n} + 1;
+//     RCP_{n + 1} = RCP_{n} * tmp + RCP_{n}
+//
 gk110_rcp_f64:
    // Step1: classify input according to exponent and value, and calculate
    // result for 0/inf/nan, $r2 holds the exponent value
