@@ -99,7 +99,7 @@ gk110_div_s32:
 //
 // The formula of Newton-Raphson step used in RCP(x) is:
 //     RCP_{n + 1} = 2 * RCP_{n} - x * RCP_{n} * RCP_{n}
-// The following code below use 2 FMAs for each step, and it will basically
+// The following code uses 2 FMAs for each step, and it will basically
 // look like:
 //     tmp = -src * RCP_{n} + 1
 //     RCP_{n + 1} = RCP_{n} * tmp + RCP_{n}
