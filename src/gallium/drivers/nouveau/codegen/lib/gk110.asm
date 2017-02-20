@@ -153,13 +153,14 @@ rcp_L3:
    // others need further calculation
    set b32 $p0 0x1 lt s32 $r3 0x0
    $p0 bra #rcp_end
-   sched 0x28 0x04 0x28 0x28 0x2b 0x04 0x28
-   // Step 2: Before the real calculation goes on, renormalize near the values
-   // near 1 with the following manipulation in exponent field, result in $r6d
-   add b32 $r4 $r2 0xc01
-   shl b32 $r7 $r4 clamp 0x14
+   sched 0x28 0x28 0x04 0x28 0x2b 0x04 0x28
+   // Step 2: Before the real calculation goes on, renormalize the values to
+   // range [1, 2) by setting exponent field to 0x3ff (the exponent of 1)
+   // result in $r6d. The exponent will be recovered later.
+   ext u32 $r2 $r1 0xb14
+   and b32 $r7 $r1 0x800fffff
+   add b32 $r7 $r7 0x3ff00000
    mov b32 $r6 $r0
-   sub b32 $r7 $r1 $r7
    // Step 3: Convert new value to float (no overflow will occur due to step
    // 2), calculate rcp and do newton-raphson step once
    cvt rz f32 $r5 f64 $r6
