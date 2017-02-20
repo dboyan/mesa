@@ -187,29 +187,41 @@ rcp_L3:
    fma rn f64 $r4d $r6d $r0d $r8d
    sched 0x20 0x28 0x28 0x28 0x28 0x28 0x28
    fma rn f64 $r0d $r0d $r4d $r0d
-   // The "normalized" drcp result is in $r0d
+   // Step 5: Exponent recovery and final processing
+   // The exponent is recovered by adding what we added to the exponent.
+   // Suppose we want to calculate rcp(x), but we have rcp(cx), then
+   //     rcp(x) = c * rcp(cx)
+   // The delta in exponent comes from two sources:
+   //   1) The renormalization in step 2. The delta is:
+   //      0x3ff - $r2
+   //   2) (For the denorm input) The 2^54 we multiplied at rcp_L6, stored
+   //      in $r3
+   // These 2 sources are calculated in the first two lines below, and then
+   // added to the exponent extracted from the result above.
+   // Note that after processing, the new exponent may >= 0x7ff (inf)
+   // or <= 0 (denorm). Those cases will be handled respectively below
    subr b32 $r2 $r2 0x3ff
    add b32 $r4 $r2 $r3
    ext u32 $r3 $r1 0xb14
+   // New exponent in $r3
    add b32 $r3 $r3 $r4
    add b32 $r2 $r3 0xffffffff
+   // (exponent-1) < 0x7fe (unsigned) means the result is in norm range
+   // (same logic as in step 1)
    set b32 $p0 0x1 lt u32 $r2 0x7fe
-   sched 0x2b 0x28 0x28 0x2b 0x28 0x28 0x2b
-   // Step 5: Calculate new exponent value with old exponent ($r2),
-   // $r3 (0 or 0x36) and the exponent extracted from normalized result,
-   // and classify according to the same rule as in step 1.
+   sched 0x2b 0x28 0x2b 0x28 0x28 0x2b 0x20
    (not $p0) bra #rcp_L7
    // Norms: convert exponents back and return
    shl b32 $r4 $r4 clamp 0x14
    add b32 $r1 $r4 $r1
    bra #rcp_end
 rcp_L7:
-   add b32 $r4 $r3 0xfffffc01
-   set b32 $p0 0x1 gt s32 $r4 0x3ff
+   // New exponent >= 0x7ff means that result is inf
+   set b32 $p0 0x1 ge s32 $r3 0x7ff
    (not $p0) bra #rcp_L8
-   sched 0x20 0x25 0x28 0x2b 0x28 0x23 0x25
    // Infinity
    and b32 $r1 $r1 0x80000000
+   sched 0x25 0x28 0x2b 0x28 0x23 0x25 0x28
    mov b32 $r0 0x0
    add b32 $r1 $r1 0x7ff00000
    bra #rcp_end
@@ -217,12 +229,13 @@ rcp_L8:
    // denorms, they only fall within a small range, can't be smaller than
    // 0x0004000000000000, which means if we set the exponent field to 1,
    // we can get the final result by mutiplying it with 1/2 or 1/4. Decide
-   // which one of the two is needed with exponent value.
+   // which one of the two is needed with exponent value, if not 0, 1/4 is
+   // used, 1/2 otherwise
    subr b32 $r4 $r4 0xfffffc01
-   set b32 $p0 0x1 gt u32 $r4 0x0
+   set b32 $p0 0x1 ne u32 $r3 0x0
    and b32 $r1 $r1 0x000fffff
-   sched 0x28 0x23 0x25 0x28 0x2c 0x2e 0x2a
    $p0 mov b32 $r7 0x3fd00000
+   sched 0x23 0x25 0x28 0x2c 0x2e 0x2a 0x20
    (not $p0) mov b32 $r7 0x3fe00000
    add b32 $r1 $r1 0x00100000
    mov b32 $r6 0x0
@@ -230,7 +243,7 @@ rcp_L8:
 rcp_end:
    ret
 
-// RCP F64
+// RSQ F64
 //
 // INPUT:   $r0d
 // OUTPUT:  $r0d
@@ -249,8 +262,8 @@ gk110_rsq_f64:
    // 1. NaN: set the highest bit in mantissa so it'll be surely recognized
    //    as NaN in rsqrt64h
    set $p0 0x1 gtu f64 abs $r0d 0x7ff0000000000000
-   sched 0x20 0x27 0x27 0x20 0x28 0x2c 0x25
    $p0 or b32 $r1 $r1 0x00080000
+   sched 0x27 0x27 0x20 0x28 0x2c 0x25 0x28
    and b32 $r2 $r1 0x7fffffff
    // 2. denorms: multiply them with 2^54 to make sure they become norms
    //    (will multiply 2^27 to recover in the end)
@@ -259,11 +272,11 @@ gk110_rsq_f64:
    or b32 $r2 $r0 $r2
    $p1 mul rn f64 $r0d $r0d 0x4350000000000000
    rsqrt64h f32 $r5 $r1
-   sched 0x28 0x28 0x28 0x2b 0x20 0x27 0x28
    // rsqrt64h will give correct result for 0/inf/nan, the following logic
    // checks whether the input is one of those (exponent is 0x7ff or all 0
    // except for the sign bit)
    set b32 $r6 ne u32 $r3 0x7ff
+   sched 0x28 0x28 0x2b 0x20 0x27 0x28 0x2e
    and b32 $r2 $r2 $r6
    set b32 $p0 0x1 ne u32 $r2 0x0
    $p0 bra #rsq_norm
@@ -271,9 +284,9 @@ gk110_rsq_f64:
    and b32 $r1 $r1 0x80000000
    mov b32 $r0 0x0
    or b32 $r1 $r1 $r5
-   sched 0x2e 0x28 0x20 0x28 0x29 0x29 0x29
    ret
 rsq_norm:
+   sched 0x28 0x20 0x28 0x29 0x29 0x29 0x29
    // For others, do 3 Newton-Raphson steps with the formula above
    mov b32 $r4 0x0
    mov b32 $r9 0x3fe00000
@@ -281,17 +294,17 @@ rsq_norm:
    mul rn f64 $r2d $r0d $r8d
    mul rn f64 $r0d $r2d $r4d
    fma rn f64 $r6d neg $r4d $r0d $r8d
+   fma rn f64 $r4d $r4d $r6d $r4d
    sched 0x29 0x29 0x29 0x29 0x29 0x29 0x29
-   fma rn f64 $r4d $r4d $r6d $r4d
    mul rn f64 $r0d $r2d $r4d
    fma rn f64 $r6d neg $r4d $r0d $r8d
    fma rn f64 $r4d $r4d $r6d $r4d
    mul rn f64 $r0d $r2d $r4d
    fma rn f64 $r6d neg $r4d $r0d $r8d
    fma rn f64 $r4d $r4d $r6d $r4d
-   sched 0x29 0x20 0x28 0x2e 0x00 0x00 0x00
    // Multiply 2^27 to result for denorm input to recover
    $p1 mul rn f64 $r4d $r4d 0x41a0000000000000
+   sched 0x20 0x28 0x2e 0x00 0x00 0x00 0x00
    mov b32 $r1 $r5
    mov b32 $r0 $r4
    ret
