@@ -106,7 +106,8 @@ gk110_div_s32:
 //
 gk110_rcp_f64:
    // Step1: classify input according to exponent and value, and calculate
-   // result for 0/inf/nan, $r2 holds the exponent value
+   // result for 0/inf/nan, $r2 holds the exponent value. The 0xb14 in ext
+   // instruction means to extract 0xb bits starting from bit 0x14
    ext u32 $r2 $r1 0xb14
    add b32 $r3 $r2 0xffffffff
    joinat #rcp_L3
