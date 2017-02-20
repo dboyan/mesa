@@ -164,7 +164,7 @@ rcp_L3:
    mov b32 $r6 $r0
    // Step 3: Convert new value to float (no overflow will occur due to step
    // 2), calculate rcp and do newton-raphson step once
-   cvt rz f32 $r5 f64 $r6
+   cvt rz f32 $r5 f64 $r6d
    rcp f32 $r4 $r5
    mov b32 $r0 0xbf800000
    sched 0x28 0x28 0x2a 0x2b 0x2e 0x28 0x2e
@@ -172,8 +172,8 @@ rcp_L3:
    add ftz rn f32 $r5 neg $r5 neg 0x0
    fma rn f32 $r0 $r4 $r5 $r4
    // Step 4: convert result $r0 back to double, do newton-raphson steps
-   cvt f64 $r0 f32 $r0
-   cvt f64 $r6 f64 neg $r6d
+   cvt f64 $r0d f32 $r0
+   cvt f64 $r6d f64 neg $r6d
    mov b32 $r9 0x3ff00000
    mov b32 $r8 0x0
    sched 0x29 0x29 0x29 0x29 0x29 0x29 0x29
