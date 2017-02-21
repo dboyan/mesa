@@ -221,7 +221,7 @@ rcp_L7:
    (not $p0) bra #rcp_L8
    // Infinity
    and b32 $r1 $r1 0x80000000
-   sched 0x25 0x28 0x2b 0x28 0x23 0x25 0x28
+   sched 0x25 0x28 0x2b 0x23 0x25 0x28 0x23
    mov b32 $r0 0x0
    add b32 $r1 $r1 0x7ff00000
    bra #rcp_end
@@ -231,12 +231,11 @@ rcp_L8:
    // we can get the final result by mutiplying it with 1/2 or 1/4. Decide
    // which one of the two is needed with exponent value, if not 0, 1/4 is
    // used, 1/2 otherwise
-   subr b32 $r4 $r4 0xfffffc01
    set b32 $p0 0x1 ne u32 $r3 0x0
    and b32 $r1 $r1 0x800fffff
    $p0 mov b32 $r7 0x3fd00000
-   sched 0x23 0x25 0x28 0x2c 0x2e 0x2a 0x20
    (not $p0) mov b32 $r7 0x3fe00000
+   sched 0x25 0x28 0x2c 0x2e 0x2a 0x20 0x27
    add b32 $r1 $r1 0x00100000
    mov b32 $r6 0x0
    mul rn f64 $r0d $r0d $r6d
@@ -263,8 +262,8 @@ gk110_rsq_f64:
    //    as NaN in rsqrt64h
    set $p0 0x1 gtu f64 abs $r0d 0x7ff0000000000000
    $p0 or b32 $r1 $r1 0x00080000
-   sched 0x27 0x27 0x20 0x28 0x2c 0x25 0x28
    and b32 $r2 $r1 0x7fffffff
+   sched 0x27 0x20 0x28 0x2c 0x25 0x28 0x28
    // 2. denorms: multiply them with 2^54 to make sure they become norms
    //    (will multiply 2^27 to recover in the end)
    ext u32 $r3 $r1 0xb14
@@ -276,8 +275,8 @@ gk110_rsq_f64:
    // checks whether the input is one of those (exponent is 0x7ff or all 0
    // except for the sign bit)
    set b32 $r6 ne u32 $r3 0x7ff
-   sched 0x28 0x28 0x2b 0x20 0x27 0x28 0x2e
    and b32 $r2 $r2 $r6
+   sched 0x28 0x2b 0x20 0x27 0x28 0x2e 0x28
    set b32 $p0 0x1 ne u32 $r2 0x0
    $p0 bra #rsq_norm
    // For 0/inf/nan, make sure the sign bit agrees with input and return
@@ -286,17 +285,17 @@ gk110_rsq_f64:
    or b32 $r1 $r1 $r5
    ret
 rsq_norm:
-   sched 0x28 0x20 0x28 0x29 0x29 0x29 0x29
    // For others, do 3 Newton-Raphson steps with the formula above
    mov b32 $r4 0x0
+   sched 0x20 0x28 0x29 0x29 0x29 0x29 0x29
    mov b32 $r9 0x3fe00000
    mov b32 $r8 0x0
    mul rn f64 $r2d $r0d $r8d
    mul rn f64 $r0d $r2d $r4d
    fma rn f64 $r6d neg $r4d $r0d $r8d
    fma rn f64 $r4d $r4d $r6d $r4d
-   sched 0x29 0x29 0x29 0x29 0x29 0x29 0x29
    mul rn f64 $r0d $r2d $r4d
+   sched 0x29 0x29 0x29 0x29 0x29 0x29 0x20
    fma rn f64 $r6d neg $r4d $r0d $r8d
    fma rn f64 $r4d $r4d $r6d $r4d
    mul rn f64 $r0d $r2d $r4d
@@ -304,8 +303,8 @@ rsq_norm:
    fma rn f64 $r4d $r4d $r6d $r4d
    // Multiply 2^27 to result for denorm input to recover
    $p1 mul rn f64 $r4d $r4d 0x41a0000000000000
-   sched 0x20 0x28 0x2e 0x00 0x00 0x00 0x00
    mov b32 $r1 $r5
+   sched 0x28 0x2e 0x00 0x00 0x00 0x00 0x00
    mov b32 $r0 $r4
    ret
 
