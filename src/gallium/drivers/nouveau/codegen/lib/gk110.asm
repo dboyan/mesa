@@ -233,7 +233,7 @@ rcp_L8:
    // used, 1/2 otherwise
    subr b32 $r4 $r4 0xfffffc01
    set b32 $p0 0x1 ne u32 $r3 0x0
-   and b32 $r1 $r1 0x000fffff
+   and b32 $r1 $r1 0x800fffff
    $p0 mov b32 $r7 0x3fd00000
    sched 0x23 0x25 0x28 0x2c 0x2e 0x2a 0x20
    (not $p0) mov b32 $r7 0x3fe00000
