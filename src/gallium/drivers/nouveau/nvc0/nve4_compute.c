@@ -553,6 +553,7 @@ nve4_compute_setup_launch_desc(struct nvc0_context *nvc0,
 {
    const struct nvc0_screen *screen = nvc0->screen;
    const struct nvc0_program *cp = nvc0->compprog;
+   const struct nvc0_program_config *config = &cp->config;
 
    nve4_cp_launch_desc_init_default(desc);
 
@@ -565,14 +566,14 @@ nve4_compute_setup_launch_desc(struct nvc0_context *nvc0,
    desc->blockdim_y = info->block[1];
    desc->blockdim_z = info->block[2];
 
-   desc->shared_size = align(cp->cp.smem_size, 0x100);
-   desc->local_size_p = (cp->hdr[1] & 0xfffff0) + align(cp->cp.lmem_size, 0x10);
+   desc->shared_size = align(config->cp.smem_size, 0x100);
+   desc->local_size_p = (config->hdr[1] & 0xfffff0) + align(config->cp.lmem_size, 0x10);
    desc->local_size_n = 0;
    desc->cstack_size = 0x800;
-   desc->cache_split = nve4_compute_derive_cache_split(nvc0, cp->cp.smem_size);
+   desc->cache_split = nve4_compute_derive_cache_split(nvc0, config->cp.smem_size);
 
-   desc->gpr_alloc = cp->num_gprs;
-   desc->bar_alloc = cp->num_barriers;
+   desc->gpr_alloc = config->num_gprs;
+   desc->bar_alloc = config->num_barriers;
 
    // Only bind user uniforms and the driver constant buffer through the
    // launch descriptor because UBOs are sticked to the driver cb to avoid the

@@ -2473,7 +2473,7 @@ nvc0_hw_sm_get_program(struct nvc0_screen *screen)
    if (screen->base.class_3d >= GM107_3D_CLASS) {
       prog->code = (uint32_t *)gm107_read_hw_sm_counters_code;
       prog->code_size = sizeof(gm107_read_hw_sm_counters_code);
-      prog->num_gprs = 14;
+      prog->config.num_gprs = 14;
    } else
    if (screen->base.class_3d == NVE4_3D_CLASS ||
        screen->base.class_3d == NVF0_3D_CLASS) {
@@ -2484,11 +2484,11 @@ nvc0_hw_sm_get_program(struct nvc0_screen *screen)
          prog->code = (uint32_t *)nvf0_read_hw_sm_counters_code;
          prog->code_size = sizeof(nvf0_read_hw_sm_counters_code);
       }
-      prog->num_gprs = 14;
+      prog->config.num_gprs = 14;
    } else {
       prog->code = (uint32_t *)nvc0_read_hw_sm_counters_code;
       prog->code_size = sizeof(nvc0_read_hw_sm_counters_code);
-      prog->num_gprs = 12;
+      prog->config.num_gprs = 12;
    }
    return prog;
 }

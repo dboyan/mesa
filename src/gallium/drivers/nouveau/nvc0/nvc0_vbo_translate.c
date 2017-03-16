@@ -48,10 +48,12 @@ nvc0_push_context_init(struct nvc0_context *nvc0, struct push_context *ctx)
    ctx->instance_id = 0;
 
    ctx->need_vertex_id =
-      nvc0->vertprog->vp.need_vertex_id && (nvc0->vertex->num_elements < 32);
+      nvc0->vertprog->config.vp.need_vertex_id &&
+      (nvc0->vertex->num_elements < 32);
 
    ctx->edgeflag.value = true;
-   ctx->edgeflag.enabled = nvc0->vertprog->vp.edgeflag < PIPE_MAX_ATTRIBS;
+   ctx->edgeflag.enabled =
+      nvc0->vertprog->config.vp.edgeflag < PIPE_MAX_ATTRIBS;
 
    /* silence warnings */
    ctx->edgeflag.data = NULL;
@@ -98,7 +100,7 @@ static inline void
 nvc0_push_map_edgeflag(struct push_context *ctx, struct nvc0_context *nvc0,
                        int32_t index_bias)
 {
-   unsigned attr = nvc0->vertprog->vp.edgeflag;
+   unsigned attr = nvc0->vertprog->config.vp.edgeflag;
    struct pipe_vertex_element *ve = &nvc0->vertex->element[attr].pipe;
    struct pipe_vertex_buffer *vb = &nvc0->vtxbuf[ve->vertex_buffer_index];
    struct nv04_resource *buf = nv04_resource(vb->buffer);

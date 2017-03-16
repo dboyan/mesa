@@ -34,7 +34,7 @@ static inline void
 nvc0_program_update_context_state(struct nvc0_context *nvc0,
                                   struct nvc0_program *prog, int stage)
 {
-   if (prog && prog->need_tls) {
+   if (prog && prog->config.need_tls) {
       const uint32_t flags = NV_VRAM_DOMAIN(&nvc0->screen->base) | NOUVEAU_BO_RDWR;
       if (!nvc0->state.tls_required)
          BCTX_REFN_bo(nvc0->bufctx_3d, 3D_TLS, flags, nvc0->screen->tls);
@@ -78,7 +78,7 @@ nvc0_vertprog_validate(struct nvc0_context *nvc0)
    PUSH_DATA (push, 0x11);
    PUSH_DATA (push, vp->code_base);
    BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(1)), 1);
-   PUSH_DATA (push, vp->num_gprs);
+   PUSH_DATA (push, vp->config.num_gprs);
 
    // BEGIN_NVC0(push, NVC0_3D_(0x163c), 1);
    // PUSH_DATA (push, 0);
@@ -89,31 +89,32 @@ nvc0_fragprog_validate(struct nvc0_context *nvc0)
 {
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *fp = nvc0->fragprog;
+   struct nvc0_program_config *config = &fp->config;
    struct pipe_rasterizer_state *rast = &nvc0->rast->pipe;
 
-   if (fp->fp.force_persample_interp != rast->force_persample_interp) {
+   if (config->fp.force_persample_interp != rast->force_persample_interp) {
       /* Force the program to be reuploaded, which will trigger interp fixups
        * to get applied
        */
       if (fp->mem)
          nouveau_heap_free(&fp->mem);
 
-      fp->fp.force_persample_interp = rast->force_persample_interp;
+      config->fp.force_persample_interp = rast->force_persample_interp;
    }
 
    /* Shade model works well enough when both colors follow it. However if one
     * (or both) is explicitly set, then we have to go the patching route.
     */
-   bool has_explicit_color = fp->fp.colors &&
-      (((fp->fp.colors & 1) && !fp->fp.color_interp[0]) ||
-       ((fp->fp.colors & 2) && !fp->fp.color_interp[1]));
+   bool has_explicit_color = config->fp.colors &&
+      (((config->fp.colors & 1) && !config->fp.color_interp[0]) ||
+       ((config->fp.colors & 2) && !config->fp.color_interp[1]));
    bool hwflatshade = false;
-   if (has_explicit_color && fp->fp.flatshade != rast->flatshade) {
+   if (has_explicit_color && config->fp.flatshade != rast->flatshade) {
       /* Force re-upload */
       if (fp->mem)
          nouveau_heap_free(&fp->mem);
 
-      fp->fp.flatshade = rast->flatshade;
+      config->fp.flatshade = rast->flatshade;
 
       /* Always smooth-shade in this mode, the shader will decide on its own
        * when to flat-shade.
@@ -124,7 +125,7 @@ nvc0_fragprog_validate(struct nvc0_context *nvc0)
       /* No need to binary-patch the shader each time, make sure that it's set
        * up for the default behaviour.
        */
-      fp->fp.flatshade = 0;
+      config->fp.flatshade = 0;
    }
 
    if (hwflatshade != nvc0->state.flatshade) {
@@ -142,22 +143,22 @@ nvc0_fragprog_validate(struct nvc0_context *nvc0)
          return;
    nvc0_program_update_context_state(nvc0, fp, 4);
 
-   if (fp->fp.early_z != nvc0->state.early_z_forced) {
-      nvc0->state.early_z_forced = fp->fp.early_z;
-      IMMED_NVC0(push, NVC0_3D(FORCE_EARLY_FRAGMENT_TESTS), fp->fp.early_z);
+   if (config->fp.early_z != nvc0->state.early_z_forced) {
+      nvc0->state.early_z_forced = config->fp.early_z;
+      IMMED_NVC0(push, NVC0_3D(FORCE_EARLY_FRAGMENT_TESTS), config->fp.early_z);
    }
 
    BEGIN_NVC0(push, NVC0_3D(SP_SELECT(5)), 2);
    PUSH_DATA (push, 0x51);
    PUSH_DATA (push, fp->code_base);
    BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(5)), 1);
-   PUSH_DATA (push, fp->num_gprs);
+   PUSH_DATA (push, config->num_gprs);
 
    BEGIN_NVC0(push, SUBC_3D(0x0360), 2);
    PUSH_DATA (push, 0x20164010);
    PUSH_DATA (push, 0x20);
    BEGIN_NVC0(push, NVC0_3D(ZCULL_TEST_MASK), 1);
-   PUSH_DATA (push, fp->flags[0]);
+   PUSH_DATA (push, config->flags[0]);
 }
 
 void
@@ -165,17 +166,18 @@ nvc0_tctlprog_validate(struct nvc0_context *nvc0)
 {
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *tp = nvc0->tctlprog;
+   struct nvc0_program_config *config = &tp->config;
 
    if (tp && nvc0_program_validate(nvc0, tp)) {
-      if (tp->tp.tess_mode != ~0) {
+      if (config->tp.tess_mode != ~0) {
          BEGIN_NVC0(push, NVC0_3D(TESS_MODE), 1);
-         PUSH_DATA (push, tp->tp.tess_mode);
+         PUSH_DATA (push, config->tp.tess_mode);
       }
       BEGIN_NVC0(push, NVC0_3D(SP_SELECT(2)), 2);
       PUSH_DATA (push, 0x21);
       PUSH_DATA (push, tp->code_base);
       BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(2)), 1);
-      PUSH_DATA (push, tp->num_gprs);
+      PUSH_DATA (push, config->num_gprs);
    } else {
       tp = nvc0->tcp_empty;
       /* not a whole lot we can do to handle this failure */
@@ -193,18 +195,19 @@ nvc0_tevlprog_validate(struct nvc0_context *nvc0)
 {
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *tp = nvc0->tevlprog;
+   struct nvc0_program_config *config = &tp->config;
 
    if (tp && nvc0_program_validate(nvc0, tp)) {
-      if (tp->tp.tess_mode != ~0) {
+      if (config->tp.tess_mode != ~0) {
          BEGIN_NVC0(push, NVC0_3D(TESS_MODE), 1);
-         PUSH_DATA (push, tp->tp.tess_mode);
+         PUSH_DATA (push, config->tp.tess_mode);
       }
       BEGIN_NVC0(push, NVC0_3D(MACRO_TEP_SELECT), 1);
       PUSH_DATA (push, 0x31);
       BEGIN_NVC0(push, NVC0_3D(SP_START_ID(3)), 1);
       PUSH_DATA (push, tp->code_base);
       BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(3)), 1);
-      PUSH_DATA (push, tp->num_gprs);
+      PUSH_DATA (push, config->num_gprs);
    } else {
       BEGIN_NVC0(push, NVC0_3D(MACRO_TEP_SELECT), 1);
       PUSH_DATA (push, 0x30);
@@ -217,17 +220,18 @@ nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
 {
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *gp = nvc0->gmtyprog;
+   struct nvc0_program_config *config = &gp->config;
 
    /* we allow GPs with no code for specifying stream output state only */
    if (gp && nvc0_program_validate(nvc0, gp) && gp->code_size) {
-      const bool gp_selects_layer = !!(gp->hdr[13] & (1 << 9));
+      const bool gp_selects_layer = !!(config->hdr[13] & (1 << 9));
 
       BEGIN_NVC0(push, NVC0_3D(MACRO_GP_SELECT), 1);
       PUSH_DATA (push, 0x41);
       BEGIN_NVC0(push, NVC0_3D(SP_START_ID(4)), 1);
       PUSH_DATA (push, gp->code_base);
       BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(4)), 1);
-      PUSH_DATA (push, gp->num_gprs);
+      PUSH_DATA (push, config->num_gprs);
       BEGIN_NVC0(push, NVC0_3D(LAYER), 1);
       PUSH_DATA (push, gp_selects_layer ? NVC0_3D_LAYER_USE_GP : 0);
    } else {

@@ -689,8 +689,8 @@ nvc0_cp_state_create(struct pipe_context *pipe,
       return NULL;
    prog->type = PIPE_SHADER_COMPUTE;
 
-   prog->cp.smem_size = cso->req_local_mem;
-   prog->cp.lmem_size = cso->req_private_mem;
+   prog->config.cp.smem_size = cso->req_local_mem;
+   prog->config.cp.lmem_size = cso->req_private_mem;
    prog->parm_size = cso->req_input_mem;
 
    prog->pipe.tokens = tgsi_dup_tokens((const struct tgsi_token *)cso->prog);

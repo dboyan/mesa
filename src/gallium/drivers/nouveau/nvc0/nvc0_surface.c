@@ -870,13 +870,13 @@ nvc0_blitter_make_vp(struct nvc0_blitter *blit)
       blit->vp.code = (uint32_t *)code_nvc0; /* const_cast */
       blit->vp.code_size = sizeof(code_nvc0);
    }
-   blit->vp.num_gprs = 6;
-   blit->vp.vp.edgeflag = PIPE_MAX_ATTRIBS;
+   blit->vp.config.num_gprs = 6;
+   blit->vp.config.vp.edgeflag = PIPE_MAX_ATTRIBS;
 
-   blit->vp.hdr[0]  = 0x00020461; /* vertprog magic */
-   blit->vp.hdr[4]  = 0x000ff000; /* no outputs read */
-   blit->vp.hdr[6]  = 0x00000073; /* a[0x80].xy, a[0x90].xyz */
-   blit->vp.hdr[13] = 0x00073000; /* o[0x70].xy, o[0x80].xyz */
+   blit->vp.config.hdr[0]  = 0x00020461; /* vertprog magic */
+   blit->vp.config.hdr[4]  = 0x000ff000; /* no outputs read */
+   blit->vp.config.hdr[6]  = 0x00000073; /* a[0x80].xy, a[0x90].xyz */
+   blit->vp.config.hdr[13] = 0x00073000; /* o[0x70].xy, o[0x80].xyz */
 }
 
 static void

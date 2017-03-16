@@ -388,11 +388,11 @@ nvc0_check_program_ucps(struct nvc0_context *nvc0,
 {
    const unsigned n = util_logbase2(mask) + 1;
 
-   if (vp->vp.num_ucps >= n)
+   if (vp->config.vp.num_ucps >= n)
       return;
    nvc0_program_destroy(nvc0, vp);
 
-   vp->vp.num_ucps = n;
+   vp->config.vp.num_ucps = n;
    if (likely(vp == nvc0->vertprog))
       nvc0_vertprog_validate(nvc0);
    else
@@ -407,6 +407,7 @@ nvc0_validate_clip(struct nvc0_context *nvc0)
 {
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *vp;
+   struct nvc0_program_config *config;
    unsigned stage;
    uint8_t clip_enable = nvc0->rast->pipe.clip_plane_enable;
 
@@ -422,24 +423,25 @@ nvc0_validate_clip(struct nvc0_context *nvc0)
       vp = nvc0->vertprog;
    }
 
-   if (clip_enable && vp->vp.num_ucps < PIPE_MAX_CLIP_PLANES)
+   config = &vp->config;
+   if (clip_enable && config->vp.num_ucps < PIPE_MAX_CLIP_PLANES)
       nvc0_check_program_ucps(nvc0, vp, clip_enable);
 
    if (nvc0->dirty_3d & (NVC0_NEW_3D_CLIP | (NVC0_NEW_3D_VERTPROG << stage)))
-      if (vp->vp.num_ucps > 0 && vp->vp.num_ucps <= PIPE_MAX_CLIP_PLANES)
+      if (config->vp.num_ucps > 0 && config->vp.num_ucps <= PIPE_MAX_CLIP_PLANES)
          nvc0_upload_uclip_planes(nvc0, stage);
 
-   clip_enable &= vp->vp.clip_enable;
-   clip_enable |= vp->vp.cull_enable;
+   clip_enable &= config->vp.clip_enable;
+   clip_enable |= config->vp.cull_enable;
 
    if (nvc0->state.clip_enable != clip_enable) {
       nvc0->state.clip_enable = clip_enable;
       IMMED_NVC0(push, NVC0_3D(CLIP_DISTANCE_ENABLE), clip_enable);
    }
-   if (nvc0->state.clip_mode != vp->vp.clip_mode) {
-      nvc0->state.clip_mode = vp->vp.clip_mode;
+   if (nvc0->state.clip_mode != config->vp.clip_mode) {
+      nvc0->state.clip_mode = config->vp.clip_mode;
       BEGIN_NVC0(push, NVC0_3D(CLIP_DISTANCE_MODE), 1);
-      PUSH_DATA (push, vp->vp.clip_mode);
+      PUSH_DATA (push, config->vp.clip_mode);
    }
 }
 
@@ -605,8 +607,8 @@ nvc0_validate_min_samples(struct nvc0_context *nvc0)
       // have to do sample shading "to the max", otherwise there's no way to
       // tell which sets of samples are covered by the current invocation.
       // Similarly for reading the framebuffer.
-      if (nvc0->fragprog->fp.sample_mask_in ||
-          nvc0->fragprog->fp.reads_framebuffer)
+      if (nvc0->fragprog->config.fp.sample_mask_in ||
+          nvc0->fragprog->config.fp.reads_framebuffer)
          samples = util_framebuffer_get_num_samples(&nvc0->framebuffer);
       samples |= NVC0_3D_SAMPLE_SHADING_ENABLE;
    }
@@ -645,7 +647,7 @@ nvc0_validate_fp_zsa_rast(struct nvc0_context *nvc0)
       bool zs = nvc0->zsa &&
          (nvc0->zsa->pipe.depth.enabled || nvc0->zsa->pipe.stencil[0].enabled);
       rasterizer_discard = !zs &&
-         (!nvc0->fragprog || !nvc0->fragprog->hdr[18]);
+         (!nvc0->fragprog || !nvc0->fragprog->config.hdr[18]);
    }
 
    if (rasterizer_discard != nvc0->state.rasterizer_discard) {
@@ -717,7 +719,7 @@ nvc0_validate_fbread(struct nvc0_context *nvc0)
    struct pipe_sampler_view *new_view = NULL;
 
    if (nvc0->fragprog &&
-       nvc0->fragprog->fp.reads_framebuffer &&
+       nvc0->fragprog->config.fp.reads_framebuffer &&
        nvc0->framebuffer.nr_cbufs &&
        nvc0->framebuffer.cbufs[0]) {
       struct pipe_sampler_view tmpl;

@@ -17,18 +17,9 @@ struct nvc0_transform_feedback_state {
 
 #define NVC0_SHADER_HEADER_SIZE (20 * 4)
 
-struct nvc0_program {
-   struct pipe_shader_state pipe;
-
-   ubyte type;
-   bool translated;
+struct nvc0_program_config {
    bool need_tls;
    uint8_t num_gprs;
-
-   uint32_t *code;
-   unsigned code_base;
-   unsigned code_size;
-   unsigned parm_size; /* size of non-bindable uniforms (c0[]) */
 
    uint32_t hdr[20];
    uint32_t flags[2];
@@ -62,6 +53,20 @@ struct nvc0_program {
       unsigned num_syms;
    } cp;
    uint8_t num_barriers;
+};
+
+struct nvc0_program {
+   struct pipe_shader_state pipe;
+
+   ubyte type;
+   bool translated;
+
+   uint32_t *code;
+   unsigned code_base;
+   unsigned code_size;
+   unsigned parm_size; /* size of non-bindable uniforms (c0[]) */
+
+   struct nvc0_program_config config;
 
    void *relocs;
    void *fixups;

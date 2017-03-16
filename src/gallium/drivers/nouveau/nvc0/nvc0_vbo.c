@@ -439,7 +439,7 @@ nvc0_vertex_arrays_validate(struct nvc0_context *nvc0)
 
    assert(vertex);
    if (unlikely(vertex->need_conversion) ||
-       unlikely(nvc0->vertprog->vp.edgeflag < PIPE_MAX_ATTRIBS)) {
+       unlikely(nvc0->vertprog->config.vp.edgeflag < PIPE_MAX_ATTRIBS)) {
       vbo_mode = 3;
    } else if (nvc0->vbo_user & ~nvc0->constant_vbos) {
       vbo_mode = nvc0->vbo_push_hint ? 1 : 0;
@@ -976,7 +976,7 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 
    nvc0_state_validate_3d(nvc0, ~0);
 
-   if (nvc0->vertprog->vp.need_draw_parameters && !info->indirect) {
+   if (nvc0->vertprog->config.vp.need_draw_parameters && !info->indirect) {
       PUSH_SPACE(push, 9);
       BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
       PUSH_DATA (push, NVC0_CB_AUX_SIZE);

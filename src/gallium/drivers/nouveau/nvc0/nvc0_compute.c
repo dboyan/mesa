@@ -426,6 +426,7 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *cp = nvc0->compprog;
+   struct nvc0_program_config *config = &cp->config;
    int ret;
 
    ret = !nvc0_state_validate_cp(nvc0, ~0);
@@ -440,16 +441,16 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    PUSH_DATA (push, nvc0_program_symbol_offset(cp, info->pc));
 
    BEGIN_NVC0(push, NVC0_CP(LOCAL_POS_ALLOC), 3);
-   PUSH_DATA (push, (cp->hdr[1] & 0xfffff0) + align(cp->cp.lmem_size, 0x10));
+   PUSH_DATA (push, (config->hdr[1] & 0xfffff0) + align(config->cp.lmem_size, 0x10));
    PUSH_DATA (push, 0);
    PUSH_DATA (push, 0x800); /* WARP_CSTACK_SIZE */
 
    BEGIN_NVC0(push, NVC0_CP(SHARED_SIZE), 3);
-   PUSH_DATA (push, align(cp->cp.smem_size, 0x100));
+   PUSH_DATA (push, align(config->cp.smem_size, 0x100));
    PUSH_DATA (push, info->block[0] * info->block[1] * info->block[2]);
-   PUSH_DATA (push, cp->num_barriers);
+   PUSH_DATA (push, config->num_barriers);
    BEGIN_NVC0(push, NVC0_CP(CP_GPR_ALLOC), 1);
-   PUSH_DATA (push, cp->num_gprs);
+   PUSH_DATA (push, config->num_gprs);
 
    /* launch preliminary setup */
    BEGIN_NVC0(push, NVC0_CP(GRIDID), 1);
