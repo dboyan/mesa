@@ -22,6 +22,10 @@
 
 #include "pipe/p_defines.h"
 
+#include "util/crc32.h"
+#include "util/disk_cache.h"
+#include "util/mesa-sha1.h"
+
 #include "tgsi/tgsi_ureg.h"
 
 #include "nvc0/nvc0_context.h"
@@ -564,13 +568,241 @@ nvc0_program_dump(struct nvc0_program *prog)
 }
 #endif
 
+static void *
+nvc0_get_tgsi_binary(struct nvc0_program *prog, struct nv50_ir_prog_info *info)
+{
+   unsigned tgsi_size = tgsi_num_tokens(prog->pipe.tokens) *
+                        sizeof(struct tgsi_token);
+   unsigned size =
+      4 + /* total size */
+      4 + /* info->optLevel */
+      tgsi_size +
+      sizeof(prog->pipe.stream_output);
+   char *result = MALLOC(size);
+
+   if (!result)
+      return NULL;
+
+   *((uint32_t *)result) = size;
+   *((uint32_t *)(result + 4)) = info->optLevel;
+   memcpy(result + 8, prog->pipe.tokens, tgsi_size);
+   memcpy(result + 8 + tgsi_size, &prog->pipe.stream_output,
+          sizeof(prog->pipe.stream_output));
+   return result;
+}
+
+/** Copy "data" to "ptr" and return the next dword following copied data. */
+static uint32_t *
+write_data(uint32_t *ptr, const void *data, unsigned size)
+{
+   /* data may be NULL if size == 0 */
+   if (size)
+      memcpy(ptr, data, size);
+   ptr += DIV_ROUND_UP(size, 4);
+   return ptr;
+}
+
+/** Read data from "ptr". Return the next dword following the data. */
+static uint32_t *
+read_data(uint32_t *ptr, void *data, unsigned size)
+{
+   memcpy(data, ptr, size);
+   ptr += DIV_ROUND_UP(size, 4);
+   return ptr;
+}
+
+/**
+ * Write the size as uint followed by the data. Return the next dword
+ * following the copied data.
+ */
+static uint32_t *
+write_chunk(uint32_t *ptr, const void *data, unsigned size)
+{
+   *ptr++ = size;
+   return write_data(ptr, data, size);
+}
+
+/**
+ * Read the size as uint followed by the data. Return both via parameters.
+ * Return the next dword following the data.
+ */
+static uint32_t *
+read_chunk(uint32_t *ptr, void **data, unsigned *size)
+{
+   assert(*data == NULL);
+   *size = *ptr++;
+   if (!*size)
+      return ptr;
+
+   *data = MALLOC(*size);
+   if (*data == NULL)
+      return NULL;
+
+   return read_data(ptr, *data, *size);
+}
+
+static bool
+nvc0_load_program_binary(struct nvc0_program *prog,
+                         struct nv50_ir_prog_info *info,
+                         void *binary)
+{
+   uint32_t *ptr = binary;
+   struct nvc0_program_config *config;
+   uint32_t size = *ptr++;
+   uint32_t crc32 = *ptr++;
+   unsigned tmp;
+
+   if (util_hash_crc32(ptr, size - 8) != crc32) {
+      fprintf(stderr, "nouveau: binary shader has invalid crc32\n");
+      return false;
+   }
+
+   // If the cached copy of shader has less num_ucps than requested, we have
+   // to do a recompile and cache the new shader instead of this one
+   config = (struct nvc0_program_config *)ptr;
+   if (config->vp.num_ucps < info->io.genUserClip)
+      return false;
+
+   ptr = read_data(ptr, &prog->config, sizeof(prog->config));
+   ptr = read_chunk(ptr, (void **)&prog->code, &prog->code_size);
+   if (ptr == NULL)
+      goto fail_code;
+
+   ptr = read_chunk(ptr, &prog->relocs, &tmp);
+   if (ptr == NULL)
+      goto fail_reloc;
+
+   ptr = read_chunk(ptr, &prog->fixups, &tmp);
+   if (ptr == NULL)
+      goto fail_fixup;
+
+   ptr = read_chunk(ptr, &config->cp.syms, &tmp);
+   if (ptr == NULL)
+      goto fail_syms;
+
+   if (prog->pipe.stream_output.num_outputs) {
+      prog->tfb = MALLOC_STRUCT(nvc0_transform_feedback_state);
+      if (prog->tfb == false)
+         goto fail_tfb;
+      ptr = read_data(ptr, prog->tfb, sizeof(*prog->tfb));
+   }
+
+   return true;
+
+fail_tfb:
+   FREE(prog->config.cp.syms);
+fail_syms:
+   FREE(prog->fixups);
+fail_fixup:
+   FREE(prog->relocs);
+fail_reloc:
+   FREE(prog->code);
+fail_code:
+   return false;
+}
+
+static void *
+nvc0_get_program_binary(struct nvc0_program *prog)
+{
+   void *buffer;
+   uint32_t *ptr;
+   unsigned reloc_size = 0, fixup_size = 0, sym_size = 0;
+   unsigned size;
+
+   if (prog->relocs)
+      reloc_size = nv50_ir_get_reloc_size(prog->relocs);
+   if (prog->fixups)
+      fixup_size = nv50_ir_get_fixup_size(prog->fixups);
+   if (prog->type == PIPE_SHADER_COMPUTE)
+      sym_size = prog->config.cp.num_syms * sizeof(struct nv50_ir_prog_symbol);
+   size = 4 + /* binary size */
+          4 + /* CRC32 */
+          align(sizeof(prog->config), 4) +
+          4 + align(prog->code_size, 4) +
+          4 + align(reloc_size, 4) +
+          4 + align(fixup_size, 4) +
+          4 + align(sym_size, 4);
+   if (prog->pipe.stream_output.num_outputs)
+      size += align(sizeof(*prog->tfb), 4);
+
+   buffer = MALLOC(size);
+   ptr = buffer;
+   if (!buffer)
+      return NULL;
+
+   *ptr++ = size;
+   ptr++; /* CRC32 is calculated at the end. */
+
+   ptr = write_data(ptr, &prog->config, sizeof(prog->config));
+   ptr = write_chunk(ptr, prog->code, prog->code_size);
+   ptr = write_chunk(ptr, prog->relocs, reloc_size);
+   ptr = write_chunk(ptr, prog->fixups, fixup_size);
+   ptr = write_chunk(ptr, prog->config.cp.syms, sym_size);
+   if (prog->pipe.stream_output.num_outputs)
+      ptr = write_data(ptr, prog->tfb, sizeof(*prog->tfb));
+   assert((char *)ptr - (char *)buffer == size);
+
+   ptr = (uint32_t*)buffer;
+   ptr++;
+   *ptr = util_hash_crc32(ptr + 1, size - 8);
+
+   return buffer;
+}
+
+static bool
+nvc0_cache_load_program(struct nvc0_screen *screen,
+                        struct nvc0_program *prog,
+                        struct nv50_ir_prog_info *info,
+                        const unsigned char *sha1)
+{
+   void *buffer;
+   size_t binary_size;
+   bool ret = false;
+
+   buffer = disk_cache_get(screen->base.disk_shader_cache, sha1, &binary_size);
+   if (!buffer)
+      return false;
+
+   if (binary_size < sizeof(uint32_t) || binary_size != *(uint32_t *)buffer ||
+       !nvc0_load_program_binary(prog, info, buffer)) {
+      // XXX: Should not remove from cache when failing to allocate.
+      disk_cache_remove(screen->base.disk_shader_cache, sha1);
+      goto out;
+   }
+
+   ret = true;
+out:
+   free(buffer);
+   return ret;
+}
+
+static void
+nvc0_cache_store_program(struct nvc0_screen *screen,
+                         struct nvc0_program *prog,
+                         const unsigned char *sha1)
+{
+   void *buffer;
+
+   buffer = nvc0_get_program_binary(prog);
+   if (!buffer)
+      return;
+
+   disk_cache_put(screen->base.disk_shader_cache, sha1, buffer,
+                  *(unsigned *) buffer);
+   FREE(buffer);
+}
+
 bool
-nvc0_program_translate(struct nvc0_program *prog, uint16_t chipset,
+nvc0_program_translate(struct nvc0_screen *screen,
+                       struct nvc0_program *prog, uint16_t chipset,
                        struct pipe_debug_callback *debug)
 {
    struct nv50_ir_prog_info *info;
    struct nvc0_program_config *config = &prog->config;
+   void *tgsi_binary;
+   unsigned char sha1[CACHE_KEY_SIZE];
    int ret;
+   bool cache_program = (screen->base.disk_shader_cache != NULL);
 
    info = CALLOC_STRUCT(nv50_ir_prog_info);
    if (!info)
@@ -585,6 +817,8 @@ nvc0_program_translate(struct nvc0_program *prog, uint16_t chipset,
    info->target = debug_get_num_option("NV50_PROG_CHIPSET", chipset);
    info->optLevel = debug_get_num_option("NV50_PROG_OPTIMIZE", 3);
    info->dbgFlags = debug_get_num_option("NV50_PROG_DEBUG", 0);
+   cache_program = cache_program && !info->dbgFlags &&
+                   info->target == chipset;
 #else
    info->optLevel = 3;
 #endif
@@ -603,6 +837,8 @@ nvc0_program_translate(struct nvc0_program *prog, uint16_t chipset,
    }
 
    if (prog->type == PIPE_SHADER_COMPUTE) {
+      // XXX
+      cache_program = false;
       if (info->target >= NVISA_GK104_CHIPSET) {
          info->io.auxCBSlot = 7;
          info->io.msInfoCBSlot = 7;
@@ -614,6 +850,17 @@ nvc0_program_translate(struct nvc0_program *prog, uint16_t chipset,
    }
 
    info->assignSlots = nvc0_program_assign_varying_slots;
+
+   if (cache_program) {
+      tgsi_binary = nvc0_get_tgsi_binary(prog, info);
+      if (!tgsi_binary) {
+         cache_program = false;
+      } else {
+         _mesa_sha1_compute(tgsi_binary, *(uint32_t *)tgsi_binary, sha1);
+         if (nvc0_cache_load_program(screen, prog, info, sha1))
+            return true;
+      }
+   }
 
    ret = nv50_ir_generate_code(info);
    if (ret) {
@@ -701,7 +948,12 @@ nvc0_program_translate(struct nvc0_program *prog, uint16_t chipset,
       nvc0_program_dump(prog);
 #endif
 
+   if (cache_program)
+      nvc0_cache_store_program(screen, prog, sha1);
+
 out:
+   if (cache_program)
+      FREE(tgsi_binary);
    FREE(info);
    return !ret;
 }
