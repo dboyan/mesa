@@ -442,6 +442,7 @@ nv50_program_upload_code(struct nv50_context *nv50, struct nv50_program *prog)
    struct nouveau_heap *heap;
    int ret;
    uint32_t size = align(prog->code_size, 0x40);
+   uint16_t chipset = nv50->screen->base.device->chipset;
    uint8_t prog_type;
 
    switch (prog->type) {
@@ -491,7 +492,7 @@ nv50_program_upload_code(struct nv50_context *nv50, struct nv50_program *prog)
    if (prog->fixups)
       nv50_ir_relocate_code(prog->fixups, prog->code, prog->code_base, 0, 0);
    if (prog->interps)
-      nv50_ir_apply_fixups(prog->interps, prog->code,
+      nv50_ir_apply_fixups(prog->interps, prog->code, chipset,
                            prog->fp.force_persample_interp,
                            false /* flatshade */,
                            prog->fp.alphatest - 1);

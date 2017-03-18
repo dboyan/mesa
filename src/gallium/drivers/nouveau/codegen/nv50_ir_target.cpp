@@ -441,7 +441,7 @@ CodeEmitter::addReloc(RelocEntry::Type ty, int w, uint32_t data, uint32_t m,
 }
 
 bool
-CodeEmitter::addInterp(int ipa, int reg, FixupApply apply)
+CodeEmitter::addInterp(int ipa, int reg, uint32_t applyOp)
 {
    unsigned int n = fixupInfo ? fixupInfo->count : 0;
 
@@ -457,7 +457,7 @@ CodeEmitter::addInterp(int ipa, int reg, FixupApply apply)
    }
    ++fixupInfo->count;
 
-   fixupInfo->entry[n] = FixupEntry(apply, ipa, reg, codeSize >> 2);
+   fixupInfo->entry[n] = FixupEntry(applyOp, ipa, reg, codeSize >> 2);
 
    return true;
 }
@@ -482,8 +482,12 @@ RelocEntry::apply(uint32_t *binary, const RelocInfo *info) const
    binary[offset / 4] |= value & mask;
 }
 
-} // namespace nv50_ir
+extern void fixupApplyNV50(uint32_t op, const FixupEntry *entry, uint32_t *code, const FixupData& data);
+extern void fixupApplyNVC0(uint32_t op, const FixupEntry *entry, uint32_t *code, const FixupData& data);
+extern void fixupApplyGK110(uint32_t op, const FixupEntry *entry, uint32_t *code, const FixupData& data);
+extern void fixupApplyGM107(uint32_t op, const FixupEntry *entry, uint32_t *code, const FixupData& data);
 
+} // namespace nv50_ir
 
 #include "codegen/nv50_ir_driver.h"
 
@@ -506,19 +510,47 @@ nv50_ir_relocate_code(void *relocData, uint32_t *code,
 }
 
 void
-nv50_ir_apply_fixups(void *fixupData, uint32_t *code,
+nv50_ir_apply_fixups(void *fixupData, uint32_t *code, uint16_t chipset,
                      bool force_persample_interp, bool flatshade,
                      uint8_t alphatest)
 {
    nv50_ir::FixupInfo *info = reinterpret_cast<nv50_ir::FixupInfo *>(
       fixupData);
+   nv50_ir::FixupApply apply;
 
+   switch (chipset & 0xf0) {
+   case 0x50:
+   case 0x80:
+   case 0x90:
+   case 0xa0:
+      apply = nv50_ir::fixupApplyNV50;
+      break;
+   case 0xc0:
+   case 0xd0:
+   case 0xe0:
+      if (chipset < NVISA_GK20A_CHIPSET) {
+         apply = nv50_ir::fixupApplyNVC0;
+         break;
+      }
+      // Fallthrough for gk20a
+   case 0xf0:
+   case 0x100:
+      apply = nv50_ir::fixupApplyGK110;
+      break;
+   case 0x110:
+   case 0x120:
+   case 0x130:
+      apply = nv50_ir::fixupApplyGM107;
+      break;
+   default:
+      return;
+   }
    // force_persample_interp: all non-flat -> per-sample
    // flatshade: all color -> flat
    // alphatest: PIPE_FUNC_* to use with alphatest
    nv50_ir::FixupData data(force_persample_interp, flatshade, alphatest);
    for (unsigned i = 0; i < info->count; ++i)
-      info->entry[i].apply(&info->entry[i], code, data);
+      (*apply)(info->entry[i].applyOp, &info->entry[i], code, data);
 }
 
 void

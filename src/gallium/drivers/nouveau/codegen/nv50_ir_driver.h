@@ -207,7 +207,7 @@ extern void nv50_ir_relocate_code(void *relocData, uint32_t *code,
                                   uint32_t dataPos);
 
 extern void
-nv50_ir_apply_fixups(void *fixupData, uint32_t *code,
+nv50_ir_apply_fixups(void *fixupData, uint32_t *code, uint16_t chipset,
                      bool force_per_sample, bool flatshade,
                      uint8_t alphatest);
 

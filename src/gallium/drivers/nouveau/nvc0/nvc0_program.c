@@ -757,12 +757,17 @@ nvc0_program_upload_code(struct nvc0_context *nvc0, struct nvc0_program *prog)
    struct nvc0_program_config *config = &prog->config;
    const bool is_cp = prog->type == PIPE_SHADER_COMPUTE;
    uint32_t code_pos = prog->code_base + (is_cp ? 0 : NVC0_SHADER_HEADER_SIZE);
+   uint16_t chipset = screen->base.device->chipset;
+
+#if DEBUG
+   chipset = debug_get_num_option("NV50_PROG_CHIPSET", chipset);
+#endif
 
    if (prog->relocs)
       nv50_ir_relocate_code(prog->relocs, prog->code, code_pos,
                             screen->lib_code->start, 0);
    if (prog->fixups) {
-      nv50_ir_apply_fixups(prog->fixups, prog->code,
+      nv50_ir_apply_fixups(prog->fixups, prog->code, chipset,
                            config->fp.force_persample_interp,
                            config->fp.flatshade,
                            0 /* alphatest */);

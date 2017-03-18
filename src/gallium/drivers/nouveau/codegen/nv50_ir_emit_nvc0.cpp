@@ -167,6 +167,11 @@ private:
 #define SDATA(a) ((a).rep()->reg.data)
 #define DDATA(a) ((a).rep()->reg.data)
 
+enum {
+   FIXUP_SELP_FLIP,
+   FIXUP_INTERP_APPLY,
+};
+
 void CodeEmitterNVC0::srcId(const ValueRef& src, const int pos)
 {
    code[pos / 32] |= (src.get() ? SDATA(src).id : 63) << (pos % 32);
@@ -1254,7 +1259,7 @@ void CodeEmitterNVC0::emitSELP(const Instruction *i)
       code[1] |= 1 << 20;
 
    if (i->subOp == 1) {
-      addInterp(0, 0, selpFlip);
+      addInterp(0, 0, FIXUP_SELP_FLIP);
    }
 }
 
@@ -1743,10 +1748,10 @@ CodeEmitterNVC0::emitINTERP(const Instruction *i)
 
       if (i->op == OP_PINTERP) {
          srcId(i->src(1), 26);
-         addInterp(i->ipa, SDATA(i->src(1)).id, interpApply);
+         addInterp(i->ipa, SDATA(i->src(1)).id, FIXUP_INTERP_APPLY);
       } else {
          code[0] |= 0x3f << 26;
-         addInterp(i->ipa, 0x3f, interpApply);
+         addInterp(i->ipa, 0x3f, FIXUP_INTERP_APPLY);
       }
 
       srcId(i->src(0).getIndirect(0), 20);
@@ -3440,6 +3445,20 @@ TargetNVC0::getCodeEmitter(Program::Type type)
    if (chipset >= NVISA_GK20A_CHIPSET)
       return createCodeEmitterGK110(type);
    return createCodeEmitterNVC0(type);
+}
+
+void
+fixupApplyNVC0(uint32_t op, const FixupEntry *entry, uint32_t *code,
+               const FixupData& data)
+{
+   switch (op) {
+   case FIXUP_SELP_FLIP:
+      selpFlip(entry, code, data);
+      break;
+   case FIXUP_INTERP_APPLY:
+      interpApply(entry, code, data);
+      break;
+   }
 }
 
 } // namespace nv50_ir

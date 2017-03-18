@@ -134,6 +134,11 @@ private:
 #define SDATA(a) ((a).rep()->reg.data)
 #define DDATA(a) ((a).rep()->reg.data)
 
+enum {
+   FIXUP_ALPHATEST_SET,
+   FIXUP_INTERP_APPLY,
+};
+
 void CodeEmitterNV50::srcId(const ValueRef& src, const int pos)
 {
    assert(src.get());
@@ -934,7 +939,7 @@ CodeEmitterNV50::emitINTERP(const Instruction *i)
       emitFlagsRd(i);
    }
 
-   addInterp(i->ipa, i->encSize, interpApply);
+   addInterp(i->ipa, i->encSize, FIXUP_INTERP_APPLY);
 }
 
 void
@@ -1318,7 +1323,7 @@ CodeEmitterNV50::emitSET(const Instruction *i)
    emitForm_MAD(i);
 
    if (i->subOp == 1) {
-      addInterp(0, 0, alphatestSet);
+      addInterp(0, 0, FIXUP_ALPHATEST_SET);
    }
 }
 
@@ -2226,6 +2231,20 @@ TargetNV50::getCodeEmitter(Program::Type type)
    CodeEmitterNV50 *emit = new CodeEmitterNV50(this);
    emit->setProgramType(type);
    return emit;
+}
+
+void
+fixupApplyNV50(uint32_t op, const FixupEntry *entry, uint32_t *code,
+               const FixupData& data)
+{
+   switch (op) {
+   case FIXUP_ALPHATEST_SET:
+      alphatestSet(entry, code, data);
+      break;
+   case FIXUP_INTERP_APPLY:
+      interpApply(entry, code, data);
+      break;
+   }
 }
 
 } // namespace nv50_ir

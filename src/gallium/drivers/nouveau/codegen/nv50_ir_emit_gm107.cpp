@@ -213,6 +213,11 @@ private:
    void emitSUREDx();
 };
 
+enum {
+   FIXUP_SELP_FLIP,
+   FIXUP_INTERP_APPLY,
+};
+
 /*******************************************************************************
  * general instruction layout/fields
  ******************************************************************************/
@@ -942,7 +947,7 @@ CodeEmitterGM107::emitSEL()
    emitGPR (0x00, insn->def(0));
 
    if (insn->subOp == 1) {
-      addInterp(0, 0, selpFlip);
+      addInterp(0, 0, FIXUP_SELP_FLIP);
    }
 }
 
@@ -2451,12 +2456,12 @@ CodeEmitterGM107::emitIPA()
       emitGPR(0x14, insn->src(1));
       if (insn->getSampleMode() == NV50_IR_INTERP_OFFSET)
          emitGPR(0x27, insn->src(2));
-      addInterp(insn->ipa, insn->getSrc(1)->reg.data.id, interpApply);
+      addInterp(insn->ipa, insn->getSrc(1)->reg.data.id, FIXUP_INTERP_APPLY);
    } else {
       if (insn->getSampleMode() == NV50_IR_INTERP_OFFSET)
          emitGPR(0x27, insn->src(1));
       emitGPR(0x14);
-      addInterp(insn->ipa, 0xff, interpApply);
+      addInterp(insn->ipa, 0xff, FIXUP_INTERP_APPLY);
    }
 
    if (insn->getSampleMode() != NV50_IR_INTERP_OFFSET)
@@ -4271,6 +4276,20 @@ TargetGM107::createCodeEmitterGM107(Program::Type type)
    CodeEmitterGM107 *emit = new CodeEmitterGM107(this);
    emit->setProgramType(type);
    return emit;
+}
+
+void
+fixupApplyGM107(uint32_t op, const FixupEntry *entry, uint32_t *code,
+                const FixupData& data)
+{
+   switch (op) {
+   case FIXUP_SELP_FLIP:
+      selpFlip(entry, code, data);
+      break;
+   case FIXUP_INTERP_APPLY:
+      interpApply(entry, code, data);
+      break;
+   }
 }
 
 } // namespace nv50_ir

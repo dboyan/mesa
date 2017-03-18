@@ -67,14 +67,15 @@ struct FixupData {
 };
 
 struct FixupEntry;
-typedef void (*FixupApply)(const FixupEntry*, uint32_t*, const FixupData&);
+typedef void (*FixupApply)(uint32_t op, const FixupEntry*, uint32_t*,
+                           const FixupData&);
 
 struct FixupEntry
 {
-   FixupEntry(FixupApply apply, int ipa, int reg, int loc) :
-      apply(apply), ipa(ipa), reg(reg), loc(loc) {}
+   FixupEntry(uint32_t applyOp, int ipa, int reg, int loc) :
+      applyOp(applyOp), ipa(ipa), reg(reg), loc(loc) {}
 
-   FixupApply apply;
+   uint32_t applyOp;
    union {
       struct {
          uint32_t ipa:4; // SC mode used to identify colors
@@ -111,7 +112,7 @@ public:
 
    inline void *getRelocInfo() const { return relocInfo; }
 
-   bool addInterp(int ipa, int reg, FixupApply apply);
+   bool addInterp(int ipa, int reg, uint32_t applyOp);
    inline void *getFixupInfo() const { return fixupInfo; }
 
    virtual void prepareEmission(Program *);
