@@ -530,4 +530,20 @@ nv50_ir_get_target_library(uint32_t chipset,
    nv50_ir::Target::destroy(targ);
 }
 
+unsigned
+nv50_ir_get_reloc_size(void *relocData)
+{
+   nv50_ir::RelocInfo *info = reinterpret_cast<nv50_ir::RelocInfo *>(relocData);
+
+   return 4 * sizeof(uint32_t) + info->count * sizeof(nv50_ir::RelocEntry);
+}
+
+unsigned
+nv50_ir_get_fixup_size(void *fixupData)
+{
+   nv50_ir::FixupInfo *info = reinterpret_cast<nv50_ir::FixupInfo *>(fixupData);
+
+   return sizeof(uint32_t) + info->count * sizeof(nv50_ir::FixupEntry);
+}
+
 }

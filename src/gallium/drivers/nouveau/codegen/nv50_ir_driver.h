@@ -215,6 +215,9 @@ nv50_ir_apply_fixups(void *fixupData, uint32_t *code,
 extern void nv50_ir_get_target_library(uint32_t chipset,
                                        const uint32_t **code, uint32_t *size);
 
+extern unsigned nv50_ir_get_reloc_size(void *relocData);
+extern unsigned nv50_ir_get_fixup_size(void *fixupData);
+
 #ifdef __cplusplus
 }
 #endif
