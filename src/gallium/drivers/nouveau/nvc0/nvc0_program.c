@@ -644,9 +644,11 @@ read_chunk(uint32_t *ptr, void **data, unsigned *size)
 
 static bool
 nvc0_load_program_binary(struct nvc0_program *prog,
+                         struct nv50_ir_prog_info *info,
                          void *binary)
 {
    uint32_t *ptr = binary;
+   struct nvc0_program_config *config;
    uint32_t size = *ptr++;
    uint32_t crc32 = *ptr++;
    unsigned tmp;
@@ -655,6 +657,10 @@ nvc0_load_program_binary(struct nvc0_program *prog,
       fprintf(stderr, "nouveau: binary shader has invalid crc32\n");
       return false;
    }
+
+   config = (struct nvc0_program_config *)ptr;
+   if (config->vp.num_ucps < info->io.genUserClip)
+      return false;
 
    ptr = read_data(ptr, &prog->config, sizeof(prog->config));
    ptr = read_chunk(ptr, (void **)&prog->code, &prog->code_size);
@@ -736,6 +742,7 @@ nvc0_get_program_binary(struct nvc0_program *prog)
 static bool
 nvc0_cache_load_program(struct nvc0_screen *screen,
                         struct nvc0_program *prog,
+                        struct nv50_ir_prog_info *info,
                         const unsigned char *sha1)
 {
    void *buffer;
@@ -747,7 +754,7 @@ nvc0_cache_load_program(struct nvc0_screen *screen,
       return false;
 
    if (binary_size < sizeof(uint32_t) || binary_size != *(uint32_t *)buffer ||
-       !nvc0_load_program_binary(prog, buffer)) {
+       !nvc0_load_program_binary(prog, info, buffer)) {
       disk_cache_remove(screen->base.disk_shader_cache, sha1);
       goto out;
    }
@@ -838,7 +845,7 @@ nvc0_program_translate(struct nvc0_screen *screen,
          cache_program = false;
       } else {
          _mesa_sha1_compute(tgsi_binary, *(uint32_t *)tgsi_binary, sha1);
-         if (nvc0_cache_load_program(screen, prog, sha1))
+         if (nvc0_cache_load_program(screen, prog, info, sha1))
             return true;
       }
    }
