@@ -778,6 +778,7 @@ nvc0_cache_store_program(struct nvc0_screen *screen,
 
    disk_cache_put(screen->base.disk_shader_cache, sha1, buffer,
                   *(unsigned *) buffer);
+   FREE(buffer);
 }
 
 bool
