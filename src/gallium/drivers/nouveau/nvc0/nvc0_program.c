@@ -752,7 +752,7 @@ nvc0_cache_load_program(struct nvc0_screen *screen,
       goto out;
    }
 
-   ret = nvc0_load_program_binary(prog, buffer);
+   ret = true;
 out:
    free(buffer);
    return ret;
