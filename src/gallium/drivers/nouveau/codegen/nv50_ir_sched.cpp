@@ -24,6 +24,7 @@
 
 #include "codegen/nv50_ir.h"
 #include "codegen/nv50_ir_sched.h"
+#include "codegen/nv50_ir_target.h"
 
 namespace nv50_ir {
 
@@ -140,8 +141,9 @@ void Scheduler::calcDeps()
 
 int Scheduler::getLatency(Instruction *inst)
 {
-   // TODO
-   return 6;
+   const Target *targ = bb->getProgram()->getTarget();
+
+   return targ->getLatency(inst);
 }
 
 void Scheduler::emptyBB()
@@ -156,7 +158,19 @@ void Scheduler::emptyBB()
 
 Scheduler::NodeIter Scheduler::chooseInst()
 {
-   return nodeList.begin();
+   NodeIter chosen = nodeList.begin();
+   int minTime = (*chosen)->availTime;
+   NodeIter n = chosen;
+
+   for (++n; n != nodeList.end(); ++n) {
+      SchedNode *node = *n;
+      if (node->availTime < minTime) {
+         chosen = n;
+         minTime = node->availTime;
+      }
+   }
+
+   return chosen;
 }
 
 bool Scheduler::visit(BasicBlock *bb)
