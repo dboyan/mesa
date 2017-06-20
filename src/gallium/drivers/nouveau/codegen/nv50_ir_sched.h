@@ -37,8 +37,11 @@ public:
 
    Instruction *inst;
    std::vector<SchedNode *> childList;
+   std::vector<int> latencies;
+
    int childCount;
    int parentCount;
+   int availTime;
 };
 
 class Scheduler : public Pass {
@@ -53,10 +56,12 @@ private:
    bool visit(BasicBlock *bb);
 
    void addInstructions();
+   void addDep(SchedNode *before, SchedNode *after, int latency);
    void addDep(SchedNode *before, SchedNode *after);
    void calcDeps();
    void emptyBB();
    NodeIter chooseInst();
+   int getLatency(Instruction *inst);
 
    inline bool isValueReg(Value *v) const;
    inline bool isValueWMem(Value *v) const;

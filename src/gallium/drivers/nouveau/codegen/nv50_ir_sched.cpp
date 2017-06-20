@@ -20,6 +20,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "util/u_inlines.h"
+
 #include "codegen/nv50_ir.h"
 #include "codegen/nv50_ir_sched.h"
 
@@ -30,6 +32,7 @@ SchedNode::SchedNode(Instruction *inst)
    this->inst = inst;
    this->childCount = 0;
    this->parentCount = 0;
+   this->availTime = 0;
    inst->snode = this;
 }
 
@@ -49,11 +52,17 @@ void Scheduler::addInstructions()
    }
 }
 
-void Scheduler::addDep(SchedNode *before, SchedNode *after)
+void Scheduler::addDep(SchedNode *before, SchedNode *after, int latency)
 {
    before->childList.push_back(after);
+   before->latencies.push_back(latency);
    before->childCount++;
    after->parentCount++;
+}
+
+void Scheduler::addDep(SchedNode *before, SchedNode *after)
+{
+   addDep(before, after, getLatency(before->inst));
 }
 
 void Scheduler::calcDeps()
@@ -69,10 +78,10 @@ void Scheduler::calcDeps()
       if (inst->fixed) {
          NodeIter n2;
          for (n2 = nodeList.begin(); n2 != n; ++n2) {
-            addDep(*n2, *n);
+            addDep(*n2, *n, 0);
          }
          for (++n2; n2 != nodeList.end(); ++n2) {
-            addDep(*n, *n2);
+            addDep(*n, *n2, 0);
          }
       }
 
@@ -81,7 +90,7 @@ void Scheduler::calcDeps()
          Value *v = inst->getSrc(i);
          if (isValueWMem(v)) {
             if (lastMemWrite[WRMEM_ID(v->reg.file)])
-               addDep(lastMemWrite[WRMEM_ID(v->reg.file)], node);
+               addDep(lastMemWrite[WRMEM_ID(v->reg.file)], node, 0);
          }
       }
       for (unsigned i = 0; inst->defExists(i); i++) {
@@ -97,10 +106,13 @@ void Scheduler::calcDeps()
          } else if (isValueWMem(v)) {
             // Memory WAW
             if (lastMemWrite[WRMEM_ID(v->reg.file)])
-               addDep(lastMemWrite[WRMEM_ID(v->reg.file)], node);
+               addDep(lastMemWrite[WRMEM_ID(v->reg.file)], node, 0);
             lastMemWrite[WRMEM_ID(v->reg.file)] = node;
          }
       }
+      // Ensure that the last flow instruction is in place
+      if (node != nodeList.back())
+         addDep(node, nodeList.back(), 0);
    }
 
    for (NodeRIter n = nodeList.rbegin(); n != nodeList.rend(); ++n) {
@@ -111,7 +123,7 @@ void Scheduler::calcDeps()
          Value *v = inst->getSrc(i);
          if (isValueWMem(v)) {
             if (nextMemWrite[WRMEM_ID(v->reg.file)]) {
-               addDep(node, nextMemWrite[WRMEM_ID(v->reg.file)]);
+               addDep(node, nextMemWrite[WRMEM_ID(v->reg.file)], 0);
             }
          }
       }
@@ -124,6 +136,12 @@ void Scheduler::calcDeps()
    }
 #undef WRMEM_FILES
 #undef WRMEM_ID
+}
+
+int Scheduler::getLatency(Instruction *inst)
+{
+   // TODO
+   return 6;
 }
 
 void Scheduler::emptyBB()
@@ -143,6 +161,9 @@ Scheduler::NodeIter Scheduler::chooseInst()
 
 bool Scheduler::visit(BasicBlock *bb)
 {
+   int time = 0;
+   int serial = 0;
+
    this->bb = bb;
 
    addInstructions();
@@ -150,13 +171,33 @@ bool Scheduler::visit(BasicBlock *bb)
 
    emptyBB();
 
-   while (!nodeList.empty()) {
-      //
-      NodeIter ni = chooseInst();
-      nodeList.erase(ni);
+   // Remove non DAG-heads from lists
+   NodeIter nextn;
+   for (NodeIter n = nodeList.begin(); n != nodeList.end(); n = nextn) {
+      nextn = n;
+      ++nextn;
+      SchedNode *node = *n;
+      if (node->parentCount != 0)
+         nodeList.erase(n);
+   }
 
+   while (!nodeList.empty()) {
+      NodeIter ni = chooseInst();
       SchedNode *node = *ni;
-      bb->insertTail(node->inst);
+      Instruction *inst = node->inst;
+      nodeList.erase(ni);
+      inst->serial = serial++;
+      bb->insertTail(inst);
+
+      for (int i = 0; i < node->childCount; i++) {
+         SchedNode *child = node->childList[i];
+         child->availTime = MAX2(child->availTime,
+                                 time + node->latencies[i]);
+         child->parentCount--;
+         if (child->parentCount == 0)
+            nodeList.push_back(child);
+      }
+      time++;
       delete node;
    }
 

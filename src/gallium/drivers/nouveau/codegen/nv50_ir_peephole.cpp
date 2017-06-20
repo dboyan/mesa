@@ -3736,7 +3736,7 @@ Program::optimizeSSA(int level)
    RUN_PASS(2, LocalCSE, run);
    RUN_PASS(0, DeadCodeElim, buryAll);
 
-   RUN_PASS(2, Scheduler, run);
+   RUN_PASS(3, Scheduler, run);
 
    return true;
 }
